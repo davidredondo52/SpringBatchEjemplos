@@ -1,0 +1,16 @@
+<job id="importProducts">
+	<step id="decompress" next="readWriteProducts">
+		<tasklet>(...)</tasklet>
+	</step>
+	<step id="readWriteProducts" next="clean">
+		<tasklet>(...)</tasklet>
+		<next on="*" to="clean" />
+		<next on="FAILED" to="generateReport" />
+	</step>
+	<step id="generateReport" next="clean">
+		<tasklet>(...)</tasklet>
+	</step>
+	<step id="clean">
+		<tasklet>(...)</tasklet>
+	</step>
+</job>

@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+	xmlns:batch="http://www.springframework.org/schema/batch"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans 
+    http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/batch 
+    http://www.springframework.org/schema/batch/spring-batch.xsd">
+
+
+
+
+
+	<!-- OTRA MANERA DE DDEFINIR EL JOB CON LA ETIQUETA BATCH EN LUGAR DEL ESPACIO 
+		DE NOMBRES -->
+	<batch:job id="importPorducts" restartable="true">
+		<!-- comento la descompresion del zip para hacer pruebas con la lectura 
+			dde ficheros con comas <batch:step id="decompressFile" next="readWriteProducts"> 
+			<batch:tasklet ref="decompressTasklet"> </batch:tasklet> </batch:step> -->
+		<batch:step id="readWriteProducts">
+			<batch:tasklet>
+				<!-- Para ficheros <batch:chunk reader="productReader" writer="productWriter" 
+					commit-interval="3" skip-limit="5"> <batch:skippable-exception-classes> <batch:include 
+					class="org.springframework.batch.item.file.FlatFileParseException" /> </batch:skippable-exception-classes> 
+					</batch:chunk> -->
+				<!-- PARA BASE DE DATOS -->
+
+				<batch:chunk reader="productReader" writer="productJdbcWriter" processor="productsDiscountProcesor"
+					commit-interval="3" skip-limit="5">
+					<batch:skippable-exception-classes>
+						<batch:include
+							class="org.springframework.batch.item.file.FlatFileParseException" />
+					</batch:skippable-exception-classes>
+				</batch:chunk>
+			</batch:tasklet>
+		</batch:step>
+	</batch:job>
+	
+	<bean id="productsDiscountProcesor" class="profe.springbatch.products.batch.ProductsDiscountProcessor" scope="step">
+	<property name="descuento" value="10"/>
+	</bean>
+
+	<bean id="decompressTasklet" class="profe.springbatch.products.batch.DecompressTaklet"
+		scope="step">
+		<property name="inputResource" value="#{ jobParameters['inputResource']}"></property>
+		<property name="targetDirectory" value="#{ jobParameters['targetDir']}"></property>
+		<property name="targetFile" value="#{ jobParameters['targetFile']}"></property>
+	</bean>
+	
+	<bean id="jsonLineMapper"
+		class="org.springframework.batch.item.file.mapping.JsonLineMapper"></bean>
+		
+	<!-- BEAN PARA LEER FICHERO -->
+	<bean id="productReader" class="org.springframework.batch.item.file.FlatFileItemReader"
+		scope="step">
+		<property name="resource"
+			value="file:#{ jobParameters['targetDir'] + jobParameters['targetFile'] }" />
+		<property name="comments" value="#" />
+		<property name="linesToSkip" value="1" />
+		<property name="lineMapper" ref="defaultLineMapper" />
+		<property name="recordSeparatorPolicy" ref="multiLineRecordSepPolicy" />
+	</bean>
+	<!-- BEAN NECESARIO PARA EL CASO DE QUE ESTEMOS LEYENDO UN FICHERO JSON -->
+	<bean id="productRecordSeparatorPolicy"
+		class="org.springframework.batch.item.file.separator.JsonRecordSeparatorPolicy" />
+
+	<!-- BEAN PARA MULTINEAS -->
+	<bean id="multiLineRecordSepPolicy"
+		class="profe.springbatch.products.batch.ProductTwoLineSeparatorPolicy" />
+	<!-- BEAN PROPIO CREADO PARA TRATAR FICHEROS JSON -->
+	<bean id="jsonProductsLineMapper" class="profe.springbatch.products.batch.JSONWrapperLineMapper" />
+
+	<bean id="defaultLineMapper"
+		class="org.springframework.batch.item.file.mapping.DefaultLineMapper">
+		<property name="lineTokenizer" ref="delimitedLineTokenizer" />
+		<property name="fieldSetMapper">
+			<bean class="profe.springbatch.products.batch.ProductFieldSetMapper"></bean>
+		</property>
+	</bean>
+
+	<!-- saco los lineTokenizer fuera de property name="lineTokenizer" ref="fixedLengthProductsTokenizer" 
+		y pongo la referencia BEAN CREADO PARA TRATAR UN FICHERO DE TEXTO CUYAS COLS 
+		ESTAN DELIMITADOS POR UN CARACTER SEPARADOR -->
+	<bean id="delimitedLineTokenizer"
+		class="org.springframework.batch.item.file.transform.DelimitedLineTokenizer">
+		<property name="names" value="PRODUCT_ID,NAME,DESCRIPTION,PRICE"></property>
+		<property name="delimiter" value="," />
+	</bean>
+
+	<!-- BEAN CREADO PARA TRATAR UN FICHERO DE TEXTO DELIMITADO POR LA LONGITUD 
+		DE SUS CAMPOS -->
+	<bean id="fixedLengthProductsTokenizer"
+		class="org.springframework.batch.item.file.transform.FixedLengthTokenizer">
+		<property name="columns" value="1-9,10-35,36-50,51-56" />
+		<property name="names" value="PRODUCT_ID,NAME,DESCRIPTION,PRICE" />
+	</bean>
+
+	<!-- bean id="productWriter" class="profe.springbatch.products.batch.ProductConsoleItemWriter" -->
+	<bean id="productJdbcWriter" class="profe.springbatch.products.batch.ProductJdbcItemWriter"
+		scope="step">
+		<constructor-arg ref="dataSource"></constructor-arg>
+	</bean>
+
+</beans>

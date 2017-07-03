@@ -1,0 +1,15 @@
+Empleado [cif=123452435T, nombre=Esthela, apellidos=Ruíz, edad=54] tachán!!!!
+Empleado [cif=143452435L, nombre=Miguel, apellidos=Ciruelo, edad=87] tachán!!!!
+Empleado [cif=153452435K, nombre=Javier, apellidos=Bravo, edad=14] tachán!!!!
+Empleado [cif=163452435J, nombre=Amaya, apellidos=Valiente, edad=11] tachán!!!!
+Empleado [cif=173452435E, nombre=Pedro, apellidos=Conejero, edad=32] tachán!!!!
+Empleado [cif=223452435A, nombre=Manuel, apellidos=Alonso, edad=64] tachán!!!!
+Empleado [cif=234234324H, nombre=Etna, apellidos=García, edad=54] tachán!!!!
+Empleado [cif=323452435B, nombre=Mirkka, apellidos=Touko, edad=22] tachán!!!!
+Empleado [cif=343235443Y, nombre=Pilar, apellidos=Pozo, edad=8] tachán!!!!
+Empleado [cif=423452435T, nombre=Antonio, apellidos=López, edad=18] tachán!!!!
+Empleado [cif=523452435S, nombre=Ethan, apellidos=Hawk, edad=47] tachán!!!!
+Empleado [cif=623452435D, nombre=Jesús, apellidos=Gutiérrez, edad=81] tachán!!!!
+Empleado [cif=723452435F, nombre=Anne, apellidos=Ruíz, edad=69] tachán!!!!
+Empleado [cif=823452435G, nombre=Nohemí, apellidos=Ruíz, edad=77] tachán!!!!
+Empleado [cif=923452435H, nombre=Lorena, apellidos=Corujo, edad=54] tachán!!!!

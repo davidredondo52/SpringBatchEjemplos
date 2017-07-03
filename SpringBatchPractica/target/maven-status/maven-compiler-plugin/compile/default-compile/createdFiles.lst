@@ -1,0 +1,7 @@
+profe\springbatch\dao\EmpleadoJdbcItemWriter.class
+profe\springbatch\batch\listener\EmpleadoSkipListener.class
+profe\springbatch\dao\EmpleadoJdbcItemWriter$ConstantesSQL.class
+profe\springbatch\test\TestEmpleadoJob.class
+profe\springbatch\batch\listener\ItemEmpleadoListener.class
+profe\springbatch\batch\EmpleadoFieldSetMapper.class
+profe\springbatch\model\Empleado.class

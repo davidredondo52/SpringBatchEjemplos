@@ -1,0 +1,486 @@
+* LineAggregators:
+
+PassThroughLineAggregator A simple implementation that calls toString() .
+
+ExtractorLineAggregator An abstract implementation that uses a FieldExtractor to
+extracts item fields as an array. Subclasses decide how to
+aggregate the array elements.
+
+DelimitedLineAggregator An ExtractorLineAggregator subclass that produces a
+delimited string. The default delimiter is the comma character.
+
+FormatterLineAggregator An ExtractorLineAggregator subclass that formats
+each element with a java.util.Formatter.
+
+* Agregador de tamaños de campos fijo
+
+	<bean
+		class="org.springframework.batch.item.file.transform.FormatterLineAggregator">
+		<property name="fieldExtractor">
+			<bean
+				class="org.springframework.batch.item.file.transform.BeanWrapperFieldExtractor">
+				<property name="names" value="id,price,name" />
+			</bean>
+		</property>
+		<property name="format" value="%-9s%6.2f%-30s" />
+	</bean>
+
+* Escribir en un fichero diferentes tipos de objetos
+
+	public class ItemsLineAggregator implements LineAggregator<Item> {
+	
+		private Map<Class<Item>>, LineAggregator<Object>> aggregators;
+	
+		@Override
+		public String aggregate(Item item) {
+			return aggregators.get(item.getClass()).aggregate(item);
+		}
+	
+		public void setAggregators(Map<Class<LineAggregator<Item>>, LineAggregator<Object>> aggregators) {
+			this.aggregators = aggregators;
+		}
+	}
+	
+
+
+	<bean class="xxx.ItemsLineAggregator">
+		<property name="aggregators">
+			<map>
+				<entry key="xxx.Product" value-ref="ProductsLineAggregator" />
+				<entry key="xxx.Empleado"
+					value-ref="EmpleadoLineAggregator" />
+			</map>
+		</property>
+	</bean>
+
+* Writer xml
+
+	<bean id="productItemWriter" class="org.springframework.batch.item.xml.StaxEventItemWriter">
+		<property name="resource" value="file:target/outputs/products-headerfooter.xml" />
+		<property name="marshaller" ref="productMarshaller" />
+		<property name="rootTagName" value="products" />
+		<property name="overwriteOutput" value="true" />
+		<property name="headerCallback" ref="headerCallback" />
+	</bean>
+	
+	<bean id="productMarshaller" class="org.springframework.oxm.xstream.XStreamMarshaller">
+		<property name="aliases">
+			<map>
+				<entry key="empleado" value="xxx.Empleado" />
+			</map>
+		</property>
+	</bean>
+	
+* Writer estándar jdbc
+
+	<bean id="productItemWriter"
+		class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+		<property name="assertUpdates" value="true" />
+		<property name="itemSqlParameterSourceProvider">
+			<bean
+				class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+		</property>
+		<property name="sql"
+			value="INSERT INTO PRODUCT (ID, NAME, PRICE) VALUES(:id, :name, :price)" />
+		<property name="dataSource" ref="dataSource" />
+	</bean>
+
+* Writer de correos electrónicos
+
+	<step id="readWrite">
+		<tasklet>
+			<chunk reader="customerItemReader" writer="mailMessageItemWriter"
+				processor="customerProcessor" commit-interval="100" />
+		</tasklet>
+	</step>
+	
+	(...)
+	
+	<bean id="mailMessageItemWriter"
+		class="org.springframework.batch.item.mail.SimpleMailMessageItemWriter">
+		<property name="mailSender" ref="javaMailSender" />
+	</bean>
+	
+	<bean id="customerProcessor" class="xxx.CustomerItemProcessor" />
+	
+	
+	public class CustomerItemProcessor implements ItemProcessor<Customer, SimpleMailMessage> {
+	
+		@Override
+		public SimpleMailMessage process(Customer item) throws Exception {
+			SimpleMailMessage msg = new SimpleMailMessage();
+			msg.setFrom("springbatchinaction@test.com");
+			msg.setTo(item.getEmail());
+			msg.setSubject("Welcome message !!");
+			msg.setText("Hello " + item.getName());
+			return msg;
+		}
+		
+	}
+	
+* Escribir cada item en diferentes writers
+
+	<bean id="productItemWriter"
+		class="org.springframework.batch.item.support.CompositeItemWriter">
+		<property name="delegates">
+			<list>
+				<ref local="delimitedProductItemWriter" />
+				<ref local="fixedWidthProductItemWriter" />
+			</list>
+		</property>
+	</bean>
+	
+* Delegar en writers diferentes
+
+	PRODUCT_ID,NAME,DESCRIPTION,PRICE,OPERATION
+	PR....210,BlackBerry 8100 Pearl,,124.60,C
+	PR....211,Sony Ericsson W810i,,139.45,D
+	PR....212,Samsung MM-A900M Ace,,97.80,U
+	PR....213,Toshiba M285-E 14,,166.20,C
+	
+	public class ProductRouterClassifier {
+	
+		@Classifier
+		public String classify(Product classifiable) {
+			return classifiable.getOperation();
+		}
+	
+	}
+	
+	
+	<bean id="productItemWriter"
+			class="org.springframework.batch.item.support.ClassifierCompositeItemWriter">
+		<property name="classifier">
+			<bean class="org.springframework.classify.BackToBackPatternClassifier">
+				<property name="routerDelegate">
+					<bean class="com.manning.sbia.ch06.advanced.ProductRouterClassifier" />
+				</property>
+				<property name="matcherMap">
+					<map>
+						<entry key="C" value-ref="insertJdbcBatchItemWriter" />
+						<entry key="U" value-ref="updateJdbcBatchItemWriter" />
+						<entry key="D" value-ref="deleteJdbcBatchItemWriter" />
+					</map>
+				</property>
+			</bean>
+		</property>
+	</bean>
+
+* ItemProcessorAdapter permite reutilizar lógica de negocio sin necesidad de implementar
+ItemProcessor (patrón delegado)
+
+	<bean id="processor"
+		class="org.springframework.batch.item.adapter.ItemProcessorAdapter">
+		<property name="targetObject" ref="discountApplier" />
+		<property name="targetMethod" value="procesaDescuento" />
+	</bean>
+	
+
+- Chaining item processors:
+
+	<bean id="processor"
+			class="org.springframework.batch.item.support.CompositeItemProcessor">
+		<property name="delegates">
+			<list>
+				<ref bean="productMapperProcessor" />
+				<ref bean="productIdMapperProcessor" />
+			</list>
+		</property>
+	</bean>
+	
+* Aplicaciones robustas
+=======================
+
+- Tres estrategias de respuesta a fallos: skip, retry y restart
+
+- Políticas de skip estándar:
+
+LimitCheckingItemSkipPolicy - por defecto
+
+	<skippable-exception-classes>
+		<include
+				class="org.springframework.batch.item.ItemReaderException"/>
+		<exclude
+				class="org.springframework.batch.item.NonTransientResourceException"/>
+	</skippable-exception-classes>
+	
+Asignar otra política de skip:
+
+	<job id="importProductsJobWithSkipPolicy"
+			xmlns="http://www.springframework.org/schema/batch">
+		<step id="importProductsStepWithSkipPolicy">
+			<tasklet>
+				<chunk reader="reader" writer="writer" commit-interval="100"
+						skip-policy="skipPolicy" />
+			</tasklet>
+		</step>
+	</job>
+	
+	<bean id="skipPolicy" class="org.springframework.batch.core.step.skip.AlwaysSkipItemSkipPolicy" />
+
+
+- Otras políticas de skip: ExceptionClassifierSkipPolicy, AlwaysSkipItemSkipPolicy, NeverSkipItemSkipPolicy
+
+- Política personalizada:
+
+public class ExceptionSkipPolicy implements SkipPolicy {
+	
+	private Class<? extends Exception> exceptionClassToSkip;
+	
+	public ExceptionSkipPolicy(Class<? extends Exception> exceptionClassToSkip) {
+		super();
+		this.exceptionClassToSkip = exceptionClassToSkip;
+	}
+
+	/* (non-Javadoc)
+	 * @see org.springframework.batch.core.step.skip.SkipPolicy#shouldSkip(java.lang.Throwable, int)
+	 */
+	@Override
+	public boolean shouldSkip(Throwable t, int skipCount)
+			throws SkipLimitExceededException {
+		return exceptionClassToSkip.isAssignableFrom(t.getClass());
+	}
+	
+}
+
+- SkipListener - SkipListenerSupport - Anotaciones (@OnSkipInRead , @OnSkipInProcess , and @OnSkipInWrite).
+
+	</chunk>
+	<listeners>
+		<listener ref="skipListener" />
+	</listeners>
+
+
+- Configuración política de retry por defecto
+
+	<batch:chunk reader="productsReader" writer="productsJdbcWriter"
+					processor="productsDiscountProcessor" commit-interval="3" retry-limit="3">
+		<retryable-exception-classes>
+			<include class="org.springframework.dao.OptimisticLockingFailureException" />
+		</retryable-exception-classes>
+	</batch:chunk>
+
+- Redefinir siempre el hashCode() y el equals()
+
+- restartable="false" en job: no permite restart incluso sin haber completado.
+
+- allow-start-if-complete = "true" en tasklet: vuelve a repetir el step aunque se haya completado.
+
+- start-limit en tasklet: límite de restarts. Default es Integer.MAX_VALUE
+
+- Reader personalizado restartable:
+
+public class FilesInDirectoryItemReader implements ItemReader<File>, ItemStream {
+	
+	private File [] files;
+	
+	private int currentCount;
+	
+	private String key = "file.in.directory.count";
+
+	/* (non-Javadoc)
+	 * @see org.springframework.batch.item.ItemStream#open(org.springframework.batch.item.ExecutionContext)
+	 */
+	@Override
+	public void open(ExecutionContext executionContext)
+			throws ItemStreamException {
+		currentCount = executionContext.getInt(key, 0);
+	}
+
+	/* (non-Javadoc)
+	 * @see org.springframework.batch.item.ItemStream#update(org.springframework.batch.item.ExecutionContext)
+	 */
+	@Override
+	public void update(ExecutionContext executionContext)
+			throws ItemStreamException {
+		executionContext.putInt(key, currentCount);
+	}
+
+	/* (non-Javadoc)
+	 * @see org.springframework.batch.item.ItemStream#close()
+	 */
+	@Override
+	public void close() throws ItemStreamException { }
+
+	/* (non-Javadoc)
+	 * @see org.springframework.batch.item.ItemReader#read()
+	 */
+	@Override
+	public File read() throws Exception, UnexpectedInputException,
+			ParseException, NonTransientResourceException {
+		int index = ++currentCount - 1;
+		if(index == files.length) {
+			return null;
+		}
+		return files[index];
+	}
+	
+	public void setDirectory(String directory) {
+		this.files = new File(directory).listFiles(
+			(FileFilter) FileFilterUtils.fileFileFilter()
+		);
+		Arrays.sort(files, new NameFileComparator());
+	}
+
+}
+
+
+* EJECUCIÓN DE JOBS
+===================
+
+- Síncrona o asíncrona (con ejecutores de tareas)
+
+	<task:executor id="executor" pool-size="10" />
+	
+	<bean id="jobLauncher"
+			class="org.springframework.batch.core.launch.support.SimpleJobLauncher">
+		<property name="jobRepository" ref="jobRepository" />
+		<property name="taskExecutor" ref="executor" />
+	</bean>
+
+- Ejecución de jobs:
+
+	- En arquitecturas monopuesto: desde main de clase Java o con la clase CommandLineJobRunner
+	
+		java -classpath "./lib/*;./bin;./config" org.springframework.batch.core.launch.support.CommandLineJobRunner 
+				job-context.xml importProducts targetDir=./data/target/ targetFile=products.txt ejecution=0
+
+- Lanzamiento de jobs desde un servlet
+
+@Controller
+public class JobLauncherController {
+	private static final String JOB_PARAM = "jobParam";
+	private JobLauncher jobLauncher;
+	private JobRegistry jobRegistry;
+
+	public JobLauncherController(JobLauncher jobLauncher, JobRegistry jobRegistry) {
+		super();
+		this.jobLauncher = jobLauncher;
+		this.jobRegistry = jobRegistry;
+	}
+
+	@RequestMapping(value="joblauncher",method=RequestMethod.GET)
+	@ResponseStatus(HttpStatus.ACCEPTED)
+	public void launch(@RequestParam String job, HttpServletRequest request) throws Exception {
+		JobParametersBuilder builder = extractParameters(request);
+		jobLauncher.run(jobRegistry.getJob(job), builder.toJobParameters());
+	}
+
+	private JobParametersBuilder extractParameters(HttpServletRequest request) {
+		JobParametersBuilder builder = new JobParametersBuilder();
+		Enumeration<String> paramNames = request.getParameterNames();
+		while (paramNames.hasMoreElements()) {
+			String paramName = paramNames.nextElement();
+			if (!JOB_PARAM.equals(paramName)) {
+				builder.addString(paramName, request.getParameter(paramName));
+			}
+		}
+		return builder;
+	}
+}
+
+
+* FLUJO CONDICIONAL
+===================
+
+<job id="importProducts">
+	<step id="decompress" next="readWriteProducts">
+		<tasklet>(...)</tasklet>
+	</step>
+	<step id="readWriteProducts">
+		<tasklet>(...)</tasklet>
+		<next on="*" to="clean" />
+		<next on="COMPLETED_WITH_SKIPS" to="generateReport" />
+	</step>
+	<step id="generateReport" next="clean">
+		<tasklet>(...)</tasklet>
+	</step>
+	<step id="clean">
+		<tasklet>(...)</tasklet>
+	</step>
+</job>
+
+- Terminar trabajos en función del ExitStatus
+
+	<step id="step2" parent="s2">
+		<end on="COMPLETED_WITH_SKIPS"/>
+		<fail on="FAILED" exit-code="EARLY TERMINATION" />
+		<stop on="COMPLETED" restart="step2"/>
+		<next on="*" to="step3"/>
+	</step>
+
+* Decidir el status de salida programáticamente. 2 formas:
+
+- Mediante un step listener
+
+public class SkippedItemsStepListener implements StepExecutionListener {
+
+	@Override
+	public void beforeStep(StepExecution stepExecution) {
+	}
+
+	@Override
+	public ExitStatus afterStep(StepExecution stepExecution) {
+		if (!ExitStatus.FAILED.equals(
+
+				stepExecution.getExitStatus()) && stepExecution.getSkipCount() > 0) {
+			return new ExitStatus("COMPLETED WITH SKIPS");
+		} else {
+			return stepExecution.getExitStatus();
+		}
+	}
+}
+
+- Mediante un job decider
+
+	public class SkippedItemsDecider implements JobExecutionDecider {
+
+		/* (non-Javadoc)
+		 * @see org.springframework.batch.core.job.flow.JobExecutionDecider#decide(org.springframework.batch.core.JobExecution, org.springframework.batch.core.StepExecution)
+		 */
+		@Override
+		public FlowExecutionStatus decide(JobExecution jobExecution,
+				StepExecution stepExecution) {
+			if(!ExitStatus.FAILED.equals(stepExecution.getExitStatus()) &&
+					stepExecution.getSkipCount() > 0) {
+				return new FlowExecutionStatus("COMPLETED WITH SKIPS");
+			} else {
+				return new FlowExecutionStatus(jobExecution.getExitStatus().toString());
+			}
+		}
+
+	}
+
+	...
+
+	<step id="readWriteStep" next="skippedItemsDecision">
+		<tasklet ref="readWriteProductsTasklet" />
+	</step>
+	<decision id="skippedItemsDecision" decider="skippedItemsDecider">
+		<next on="COMPLETED WITH SKIPS" to="generateReportStep" />
+		<next on="*" to="indexStep" />
+	</decision>
+
+* Intercambio de información entre steps. Tres formas:
+
+- Estándard: por ejemplo, inyectando un datasource en el bean que tenga la info original,
+y éste almacena esa info en la bd. Luego otro bean lee esa info en el step que necesitemos.
+
+- A través del JobExecutionContext. Para acceder a él, depende de en qué objeto nos
+encontramos. Por ejemplo, si estamos en un StepExecutionListener:
+
+	stepExecution.getJobExecution().getExecutionContext().put("skipsCount", stepExecution.getSkipCount());
+	
+- Los ItemReader, Processor y Writer no tienen acceso directo al JobExecutionContext. En estos
+casos necesitamos que estos objetos implementen la interfaz ItemStream.
+
+- También podemos almacenar la info en el StepExecutionContext (que se destruye cuando
+termina el step) y 'promocionar' esa información al JobExecutionContext a través de un
+Listener. Spring Batch nos proporciona ya un listener que hace esto, ExecutionContextPromotionListener:
+
+	<bean id="executionContextPromotionListener" class="org.springframework.batch.core.listener.ExecutionContextPromotionListener">
+		<property name="keys" value="importId" />
+	</bean>
+	
+- Mediante un holder bean: bean que inyectamos al step source y al target, y lo utilizamos simplemente
+para almacenar información

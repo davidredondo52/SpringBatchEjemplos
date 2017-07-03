@@ -1,0 +1,262 @@
+* LineAggregators:
+
+PassThroughLineAggregator A simple implementation that calls toString() .
+
+ExtractorLineAggregator An abstract implementation that uses a FieldExtractor to
+extracts item fields as an array. Subclasses decide how to
+aggregate the array elements.
+
+DelimitedLineAggregator An ExtractorLineAggregator subclass that produces a
+delimited string. The default delimiter is the comma character.
+
+FormatterLineAggregator An ExtractorLineAggregator subclass that formats
+each element with a java.util.Formatter.
+
+* Agregador de tamaños de campos fijo
+
+	<bean
+		class="org.springframework.batch.item.file.transform.FormatterLineAggregator">
+		<property name="fieldExtractor">
+			<bean
+				class="org.springframework.batch.item.file.transform.BeanWrapperFieldExtractor">
+				<property name="names" value="id,price,name" />
+			</bean>
+		</property>
+		<property name="format" value="%-9s%6.2f%-30s" />
+	</bean>
+
+* Escribir en un fichero diferentes tipos de objetos
+
+	public class ItemsLineAggregator implements LineAggregator<Item> {
+	
+		private Map<Class<Item>>, LineAggregator<Object>> aggregators;
+	
+		@Override
+		public String aggregate(Item item) {
+			return aggregators.get(item.getClass()).aggregate(item);
+		}
+	
+		public void setAggregators(Map<Class<LineAggregator<Item>>, LineAggregator<Object>> aggregators) {
+			this.aggregators = aggregators;
+		}
+	}
+	
+
+
+	<bean class="xxx.ItemsLineAggregator">
+		<property name="aggregators">
+			<map>
+				<entry key="xxx.Product" value-ref="ProductsLineAggregator" />
+				<entry key="xxx.Empleado"
+					value-ref="EmpleadoLineAggregator" />
+			</map>
+		</property>
+	</bean>
+
+* Writer xml
+
+	<bean id="productItemWriter" class="org.springframework.batch.item.xml.StaxEventItemWriter">
+		<property name="resource" value="file:target/outputs/products-headerfooter.xml" />
+		<property name="marshaller" ref="productMarshaller" />
+		<property name="rootTagName" value="products" />
+		<property name="overwriteOutput" value="true" />
+		<property name="headerCallback" ref="headerCallback" />
+	</bean>
+	
+	<bean id="productMarshaller" class="org.springframework.oxm.xstream.XStreamMarshaller">
+		<property name="aliases">
+			<map>
+				<entry key="empleado" value="xxx.Empleado" />
+			</map>
+		</property>
+	</bean>
+	
+* Writer estándar jdbc
+
+	<bean id="productItemWriter"
+		class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+		<property name="assertUpdates" value="true" />
+		<property name="itemSqlParameterSourceProvider">
+			<bean
+				class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+		</property>
+		<property name="sql"
+			value="INSERT INTO PRODUCT (ID, NAME, PRICE) VALUES(:id, :name, :price)" />
+		<property name="dataSource" ref="dataSource" />
+	</bean>
+
+* Writer de correos electrónicos
+
+	<step id="readWrite">
+		<tasklet>
+			<chunk reader="customerItemReader" writer="mailMessageItemWriter"
+				processor="customerProcessor" commit-interval="100" />
+		</tasklet>
+	</step>
+	
+	(...)
+	
+	<bean id="mailMessageItemWriter"
+		class="org.springframework.batch.item.mail.SimpleMailMessageItemWriter">
+		<property name="mailSender" ref="javaMailSender" />
+	</bean>
+	
+	<bean id="customerProcessor" class="xxx.CustomerItemProcessor" />
+	
+	
+	public class CustomerItemProcessor implements ItemProcessor<Customer, SimpleMailMessage> {
+	
+		@Override
+		public SimpleMailMessage process(Customer item) throws Exception {
+			SimpleMailMessage msg = new SimpleMailMessage();
+			msg.setFrom("springbatchinaction@test.com");
+			msg.setTo(item.getEmail());
+			msg.setSubject("Welcome message !!");
+			msg.setText("Hello " + item.getName());
+			return msg;
+		}
+		
+	}
+	
+* Escribir cada item en diferentes writers
+
+	<bean id="productItemWriter"
+		class="org.springframework.batch.item.support.CompositeItemWriter">
+		<property name="delegates">
+			<list>
+				<ref local="delimitedProductItemWriter" />
+				<ref local="fixedWidthProductItemWriter" />
+			</list>
+		</property>
+	</bean>
+	
+* Delegar en writers diferentes
+
+	PRODUCT_ID,NAME,DESCRIPTION,PRICE,OPERATION
+	PR....210,BlackBerry 8100 Pearl,,124.60,C
+	PR....211,Sony Ericsson W810i,,139.45,D
+	PR....212,Samsung MM-A900M Ace,,97.80,U
+	PR....213,Toshiba M285-E 14,,166.20,C
+	
+	public class ProductRouterClassifier {
+	
+		@Classifier
+		public String classify(Product classifiable) {
+			return classifiable.getOperation();
+		}
+	
+	}
+	
+	
+	<bean id="productItemWriter"
+			class="org.springframework.batch.item.support.ClassifierCompositeItemWriter">
+		<property name="classifier">
+			<bean class="org.springframework.classify.BackToBackPatternClassifier">
+				<property name="routerDelegate">
+					<bean class="com.manning.sbia.ch06.advanced.ProductRouterClassifier" />
+				</property>
+				<property name="matcherMap">
+					<map>
+						<entry key="C" value-ref="insertJdbcBatchItemWriter" />
+						<entry key="U" value-ref="updateJdbcBatchItemWriter" />
+						<entry key="D" value-ref="deleteJdbcBatchItemWriter" />
+					</map>
+				</property>
+			</bean>
+		</property>
+	</bean>
+
+* ItemProcessorAdapter permite reutilizar lógica de negocio sin necesidad de implementar
+ItemProcessor (patrón delegado)
+
+	<bean id="processor"
+		class="org.springframework.batch.item.adapter.ItemProcessorAdapter">
+		<property name="targetObject" ref="discountApplier" />
+		<property name="targetMethod" value="procesaDescuento" />
+	</bean>
+	
+
+- Chaining item processors:
+
+	<bean id="processor"
+			class="org.springframework.batch.item.support.CompositeItemProcessor">
+		<property name="delegates">
+			<list>
+				<ref bean="productMapperProcessor" />
+				<ref bean="productIdMapperProcessor" />
+			</list>
+		</property>
+	</bean>
+	
+* Aplicaciones robustas
+=======================
+
+- Tres estrategias de respuesta a fallos: skip, retry y restart
+
+- Políticas de skip estándar:
+
+LimitCheckingItemSkipPolicy - por defecto
+
+	<skippable-exception-classes>
+		<include
+				class="org.springframework.batch.item.ItemReaderException"/>
+		<exclude
+				class="org.springframework.batch.item.NonTransientResourceException"/>
+	</skippable-exception-classes>
+	
+Asignar otra política de skip:
+
+	<job id="importProductsJobWithSkipPolicy"
+			xmlns="http://www.springframework.org/schema/batch">
+		<step id="importProductsStepWithSkipPolicy">
+			<tasklet>
+				<chunk reader="reader" writer="writer" commit-interval="100"
+						skip-policy="skipPolicy" />
+			</tasklet>
+		</step>
+	</job>
+
+- Otras políticas de skip: ExceptionClassifierSkipPolicy, AlwaysSkipItemSkipPolicy, NeverSkipItemSkipPolicy
+
+- Política personalizada:
+
+public class ExceptionSkipPolicy implements SkipPolicy {
+	
+	private Class<? extends Exception> exceptionClassToSkip;
+	
+	public ExceptionSkipPolicy(Class<? extends Exception> exceptionClassToSkip) {
+		super();
+		this.exceptionClassToSkip = exceptionClassToSkip;
+	}
+
+	/* (non-Javadoc)
+	 * @see org.springframework.batch.core.step.skip.SkipPolicy#shouldSkip(java.lang.Throwable, int)
+	 */
+	@Override
+	public boolean shouldSkip(Throwable t, int skipCount)
+			throws SkipLimitExceededException {
+		return exceptionClassToSkip.isAssignableFrom(t.getClass());
+	}
+	
+}
+
+- SkipListener - SkipListenerSupport - Anotaciones (@OnSkipInRead , @OnSkipInProcess , and @OnSkipInWrite).
+
+	</chunk>
+	<listeners>
+		<listener ref="skipListener" />
+	</listeners>
+
+
+- Configuración retry por defecto
+
+	<batch:chunk reader="productsReader" writer="productsJdbcWriter"
+					processor="productsDiscountProcessor" commit-interval="3" retry-limit="3">
+		<retryable-exception-classes>
+			<include class="org.springframework.dao.OptimisticLockingFailureException" />
+		</retryable-exception-classes>
+	</batch:chunk>
+
+- Redefinir siempre el hashCode() y el equals()
+
+

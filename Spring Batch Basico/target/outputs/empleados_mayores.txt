@@ -1,0 +1,12 @@
+Empleado 123452435T,Esthela,RuÃ­z,54,Empleado  Mayor de edad
+Empleado 143452435L,Miguel,Ciruelo,87,Empleado  Mayor de edad
+Empleado 173452435E,Pedro,Conejero,32,Empleado  Mayor de edad
+Empleado 223452435A,Manuel,Alonso,64,Empleado  Mayor de edad
+Empleado 234234324H,Etna,GarcÃ­a,54,Empleado  Mayor de edad
+Empleado 323452435B,Mirkka,Touko,22,Empleado  Mayor de edad
+Empleado 423452435T,Antonio,LÃ³pez,18,Empleado  Mayor de edad
+Empleado 523452435S,Ethan,Hawk,47,Empleado  Mayor de edad
+Empleado 623452435D,Jesús,Gutiérrez,81,Empleado  Mayor de edad
+Empleado 723452435F,Anne,Ruíz,69,Empleado  Mayor de edad
+Empleado 823452435G,Nohemí,Ruíz,77,Empleado  Mayor de edad
+Empleado 923452435H,Lorena,Corujo,54,Empleado  Mayor de edad

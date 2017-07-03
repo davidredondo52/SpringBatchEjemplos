@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:batch="http://www.springframework.org/schema/batch"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans 
+    http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/batch 
+    http://www.springframework.org/schema/batch/spring-batch.xsd">
+
+	<!-- - caso de q ejecutemos condicionalmeente los steps en funcion del resultado 
+		de uno de ellos <job id="importProducts"> <step id="decompress" next="readWriteProducts"> 
+		<tasklet>(...)</tasklet> </step> <step id="readWriteProducts" next="clean"> 
+		<tasklet>(...)</tasklet> <next on="*" to="clean" /> <next on="FAILED" to="generateReport" 
+		/> </step> <step id="generateReport" next="clean"> <tasklet>(...)</tasklet> 
+		</step> <step id="clean"> <tasklet>(...)</tasklet> </step> </job> -->
+
+	<!-- JOB CON 2 STEPS LEEMOS DE FICHERO DE TEXTO PLANO Y JSON EN TODOS LOS 
+		CASOS ESCRIBIMOS EN LA BASE DE DATOS TODOS LOS OBJETOS SON EMPLEADOS -->
+	<batch:job id="TestEmpleados" restartable="true">
+
+		<!--caso 1 lectura de fichero de texto plano de 1 linea -->
+		<batch:step id="readWriteEmpleados">
+			<batch:tasklet>
+				<batch:chunk reader="empleadoReaderPlano" writer="empleadoWritter"
+					commit-interval="3"  skip-limit="5">
+					<!-- batch:skip-policy>
+						<bean
+							class="org.springframework.batch.core.step.skip.AlwaysSkipItemSkipPolicy"
+							scope="step" />
+					</batch:skip-policy-->
+					<!-- batch:retry-policy> <bean class="org.springframework.retry.policy.NeverRetryPolicy" 
+						scope="step"/> </batch:retry-policy -->
+					<batch:skippable-exception-classes>
+						<batch:include
+							class="org.springframework.batch.item.file.FlatFileParseException" />
+					</batch:skippable-exception-classes>
+					<batch:listeners>
+						<batch:listener ref="itemEmpleadoListener" />
+						<batch:listener ref="empleadoSkipListener" />
+						<batch:listener ref="skippedItemsStepListener" />
+					</batch:listeners>
+				</batch:chunk>
+
+			</batch:tasklet>
+			<batch:end on="NOOP"/>
+			<batch:fail on="FAILED"/>
+			<batch:stop on="COMPLETED_WITH_SKIPS" restart="readWriteEmpleados"/>
+			<batch:next on="COMPLETED" to="readWriteEmpleadosJson"/>
+			<batch:next on="COMPLETED WITH SKIPS" to="readWriteEmpleadosJson"/>
+		</batch:step>
+
+
+		<!-- caso 2 lectura de JSON -->
+		<batch:step id="readWriteEmpleadosJson">
+			<batch:tasklet>
+				<batch:chunk reader="empleadoReaderJson" writer="empleadoWritter"
+					commit-interval="3" skip-limit="5">
+					<batch:skip-policy>
+						<bean
+							class="org.springframework.batch.core.step.skip.AlwaysSkipItemSkipPolicy"
+							scope="step" />
+					</batch:skip-policy>
+
+					<batch:skippable-exception-classes>
+						<batch:include
+							class="org.springframework.batch.item.file.FlatFileParseException" />
+					</batch:skippable-exception-classes>
+					<batch:listeners>
+						<batch:listener ref="itemEmpleadoListener" />
+						<batch:listener ref="empleadoSkipListener" />
+						<batch:listener ref="skippedItemsStepListener" />
+					</batch:listeners>
+				</batch:chunk>
+			</batch:tasklet>
+		</batch:step>
+
+	</batch:job>
+
+	<bean id="skippedItemsStepListener" class="profe.springbatch.listener.SkippedItemsStepListener" />
+	<bean id="itemEmpleadoListener" class="profe.springbatch.listener.ItemEmpleadoListener" />
+	<bean id="empleadoSkipListener" class="profe.springbatch.listener.EmpleadoSkipListener" />
+
+	<!-- BEAN PARA LEER FICHERO -->
+	<bean id="empleadoReaderPlano" class="org.springframework.batch.item.file.FlatFileItemReader"
+		scope="step">
+		<property name="resource"
+			value="file:#{ jobParameters['targetDir'] + jobParameters['targetFile'] }" />
+		<property name="comments" value="#" />
+		<property name="lineMapper" ref="defaultLineMapper" />
+
+	</bean>
+
+
+
+
+	<bean id="empleadoReaderJson" class="org.springframework.batch.item.file.FlatFileItemReader"
+		scope="step">
+		<property name="resource"
+			value="file:#{ jobParameters['targetDir'] + jobParameters['targetFile2'] }" />
+		<property name="lineMapper" ref="jsonempleadosLineMapper" />
+	</bean>
+
+	<bean id="jsonLineMapper"
+		class="org.springframework.batch.item.file.mapping.JsonLineMapper"></bean>
+
+
+
+
+	<!-- BEAN NECESARIO PARA EL CASO DE QUE ESTEMOS LEYENDO UN FICHERO JSON -->
+	<bean id="empleadoRecordSeparatorPolicy"
+		class="org.springframework.batch.item.file.separator.JsonRecordSeparatorPolicy" />
+
+	<!-- BEAN PROPIO CREADO PARA TRATAR FICHEROS JSON -->
+	<bean id="jsonempleadosLineMapper" class="profe.springbatch.mapper.JSONEmpleadoWrapperLineMapper">
+
+	</bean>
+
+	<!-- ESTE SE USA SIEMPRE en ficheros de texto tanto de 1 linea como de varias -->
+	<bean id="defaultLineMapper"
+		class="org.springframework.batch.item.file.mapping.DefaultLineMapper">
+		<property name="lineTokenizer" ref="delimitedLineTokenizer" />
+		<property name="fieldSetMapper">
+			<bean class="profe.springbatch.mapper.EmpleadoFieldSetMapper"></bean>
+		</property>
+	</bean>
+
+	<!-- BEAN CREADO PARA TRATAR UN FICHERO DE TEXTO CUYAS COLS ESTAN DELIMITADOS 
+		POR UN CARACTER SEPARADOR -->
+	<bean id="delimitedLineTokenizer"
+		class="org.springframework.batch.item.file.transform.DelimitedLineTokenizer">
+		<property name="names" value="ID,NOMBRE,APELLIDOS,EDAD"></property>
+		<property name="delimiter" value="#" />
+	</bean>
+
+
+	<bean id="empleadoWritter"
+		class="org.springframework.batch.item.support.CompositeItemWriter">
+		<property name="delegates">
+			<list>
+				<ref bean="empleadoJdbcWriter" />
+				<ref bean="empleadoItemWritter"></ref>
+			</list>
+		</property>
+
+	</bean>
+
+	<bean id="empleadoJdbcWriter" class="profe.springbatch.dao.EmpleadoJdbcItemWriter"
+		scope="step">
+		<constructor-arg ref="dataSource"></constructor-arg>
+	</bean>
+
+	<bean id="empleadoItemWritter" class="profe.springbatch.writter.EmpleadoItemWritter"
+		scope="step">
+
+	</bean>
+
+</beans>

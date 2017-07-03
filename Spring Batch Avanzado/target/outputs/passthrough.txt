@@ -1,0 +1,1 @@
+Product [id=PR....215, nombre=Nokia 2610 Phone, descripcion=, precio=102.23]

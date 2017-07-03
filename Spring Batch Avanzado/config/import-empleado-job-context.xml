@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:batch="http://www.springframework.org/schema/batch"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans 
+    http://www.springframework.org/schema/beans/spring-beans.xsd
+    http://www.springframework.org/schema/batch 
+    http://www.springframework.org/schema/batch/spring-batch.xsd">
+
+	<!-- JOB CON 3 STEPS LEEMOS DE FICHERO DE TEXTO PLANO TEXTO MULTIPLE Y JSON 
+		EN TODOS LOS CASOS ESCRIBIMOS EN LA BASE DE DATOS TODOS LOS OBJETOS SON EMPLEADOS -->
+	<batch:job id="importEmpleados" restartable="false">
+
+		<!--caso 1 lectura de fichero de texto plano de 1 linea -->
+		<batch:step id="readWriteEmpleadosPlano" >
+			<batch:tasklet>
+				<batch:chunk reader="empleadoReaderPlano" writer="empleadoJdbcWriter"
+					commit-interval="3" skip-limit="5">
+					<batch:skippable-exception-classes>
+						<batch:include
+							class="org.springframework.batch.item.file.FlatFileParseException" />
+					</batch:skippable-exception-classes>
+					<batch:listeners>
+						<batch:listener ref="itemEmpleadoListener" />
+						<batch:listener ref="empleadoSkipListener" />
+					</batch:listeners>
+				</batch:chunk>
+
+			</batch:tasklet>
+		</batch:step>
+
+		<!-- caso 2 lectura dde fichero de texto plano de varias lineas <batch:step 
+			id="readWriteEmpleadosMulti" next="readWriteEmpleadosJson"> <batch:tasklet> 
+			<batch:chunk reader="empleadoReaderMulti" writer="empleadoJdbcWriter" commit-interval="3" 
+			skip-limit="5"> <batch:skippable-exception-classes> <batch:include class="org.springframework.batch.item.file.FlatFileParseException" 
+			/> </batch:skippable-exception-classes> </batch:chunk> </batch:tasklet> </batch:step> -->
+		<!-- caso 3 lectura de JSON <batch:step id="readWriteEmpleadosJson"> <batch:tasklet> 
+			<batch:chunk reader="empleadoReaderJson" writer="empleadoJdbcWriter" commit-interval="3" 
+			skip-limit="5"> <batch:skippable-exception-classes> <batch:include class="org.springframework.batch.item.file.FlatFileParseException" 
+			/> </batch:skippable-exception-classes> </batch:chunk> </batch:tasklet> </batch:step> -->
+
+	</batch:job>
+
+
+	<bean id="itemEmpleadoListener" class="profe.springbatch.empleado.batch.ItemEmpleadoListener" />
+	<bean id="empleadoSkipListener" class="profe.springbatch.empleado.batch.EmpleadoSkipListener" />
+
+	<!-- BEAN PARA LEER FICHERO -->
+	<bean id="empleadoReaderPlano" class="org.springframework.batch.item.file.FlatFileItemReader"
+		scope="step">
+		<property name="resource"
+			value="file:#{ jobParameters['targetDir'] + jobParameters['targetFile'] }" />
+		<property name="comments" value="#" />
+		<property name="lineMapper" ref="defaultLineMapper" />
+
+	</bean>
+
+
+	<bean id="empleadoReaderMulti" class="org.springframework.batch.item.file.FlatFileItemReader"
+		scope="step">
+		<property name="resource"
+			value="file:#{ jobParameters['targetDir'] + jobParameters['targetFile2'] }" />
+
+		<property name="lineMapper" ref="defaultLineMapper" />
+		<property name="recordSeparatorPolicy" ref="multiLineEmpleadoRecordSepPolicy" />
+	</bean>
+
+
+	<bean id="empleadoReaderJson" class="org.springframework.batch.item.file.FlatFileItemReader"
+		scope="step">
+		<property name="resource"
+			value="file:#{ jobParameters['targetDir'] + jobParameters['targetFile3'] }" />
+		<property name="lineMapper" ref="jsonempleadosLineMapper" />
+	</bean>
+
+	<bean id="jsonLineMapper"
+		class="org.springframework.batch.item.file.mapping.JsonLineMapper"></bean>
+
+	<!-- BEAN PARA MULTINEAS -->
+	<bean id="multiLineEmpleadoRecordSepPolicy"
+		class="profe.springbatch.empleado.batch.EmpleadoTwoLineSeparatorPolicy" />
+
+
+	<!-- BEAN NECESARIO PARA EL CASO DE QUE ESTEMOS LEYENDO UN FICHERO JSON -->
+	<bean id="empleadoRecordSeparatorPolicy"
+		class="org.springframework.batch.item.file.separator.JsonRecordSeparatorPolicy" />
+
+	<!-- BEAN PROPIO CREADO PARA TRATAR FICHEROS JSON -->
+	<bean id="jsonempleadosLineMapper"
+		class="profe.springbatch.empleado.batch.JSONEmpleadoWrapperLineMapper">
+
+	</bean>
+
+	<!-- ESTE SE USA SIEMPRE en ficheros de texto tanto de 1 linea como de varias -->
+	<bean id="defaultLineMapper"
+		class="org.springframework.batch.item.file.mapping.DefaultLineMapper">
+		<property name="lineTokenizer" ref="delimitedLineTokenizer" />
+		<property name="fieldSetMapper">
+			<bean class="profe.springbatch.empleado.batch.EmpleadoFieldSetMapper"></bean>
+		</property>
+	</bean>
+
+	<!-- BEAN CREADO PARA TRATAR UN FICHERO DE TEXTO CUYAS COLS ESTAN DELIMITADOS 
+		POR UN CARACTER SEPARADOR -->
+	<bean id="delimitedLineTokenizer"
+		class="org.springframework.batch.item.file.transform.DelimitedLineTokenizer">
+		<property name="names" value="ID,NOMBRE,APELLIDOS,EDAD"></property>
+		<property name="delimiter" value="#" />
+	</bean>
+
+
+	<bean id="empleadoJdbcWriter" class="profe.springbatch.empleado.batch.EmpleadoJdbcItemWriter"
+		scope="step">
+		<constructor-arg ref="dataSource"></constructor-arg>
+	</bean>
+
+</beans>

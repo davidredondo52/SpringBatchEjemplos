@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:batch="http://www.springframework.org/schema/batch"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans 
+	http://www.springframework.org/schema/beans/spring-beans.xsd
+	http://www.springframework.org/schema/batch 
+	http://www.springframework.org/schema/batch/spring-batch.xsd">
+
+	<batch:job id="importProducts" restartable="true">
+<!-- 		<batch:step id="decompressFile" next="readWriteProducts">
+			<batch:tasklet ref="decompressTasklet" />
+		</batch:step> -->
+		<batch:step id="readWriteProducts">
+			<batch:tasklet>
+				<batch:chunk reader="productsReader" writer="productsJdbcWriter"
+					processor="productsDiscountProcessor" commit-interval="3" skip-limit="10">
+ 					<batch:skippable-exception-classes>
+						<batch:include class="org.springframework.batch.item.file.FlatFileParseException" />
+					</batch:skippable-exception-classes>
+				</batch:chunk>
+				<batch:listeners>
+					<batch:listener>
+						<bean class="profe.springbatch.products.batch.ProductsSkipListener" />
+					</batch:listener>
+				</batch:listeners>
+			</batch:tasklet>
+		</batch:step>
+	</batch:job>
+
+	<bean id="productsReader" class="org.springframework.batch.item.file.FlatFileItemReader"
+			scope="step">
+		<property name="resource"
+			value="file:#{ jobParameters['targetDir'] + jobParameters['targetFile'] }" />
+		<!-- <property name="linesToSkip" value="1" /> -->
+		<property name="comments" value="#" />
+		<property name="lineMapper" ref="defLineMapper" />
+<!-- 		<property name="recordSeparatorPolicy" ref="multilineRecordSepPolicy" /> -->
+	</bean>
+	
+	<bean id="productsDiscountProcessor" class="profe.springbatch.products.batch.ProductsDiscountProcessor"
+			scope="step">
+		<property name="descuento" value="10" />
+	</bean>
+	
+	<bean id="decompressTasklet" class="profe.springbatch.products.batch.DecompressTasklet"
+		scope="step">
+		<property name="inputResource" value="#{ jobParameters['inputResource'] }" />
+		<property name="targetDirectory" value="#{ jobParameters['targetDir'] }" />
+		<property name="targetFile" value="#{ jobParameters['targetFile'] }" />
+	</bean>
+
+	<bean id="productsXmlReader"
+			class="org.springframework.batch.item.xml.StaxEventItemReader" scope="step">
+		<property name="resource" value="file:#{ jobParameters['targetDir'] + jobParameters['xmlProductsFile'] }"/>
+		<property name="fragmentRootElementName" value="product"/>
+		<property name="unmarshaller" ref="productMarshaller"/>
+	</bean>
+
+	<bean id="productMarshaller"
+			class="org.springframework.oxm.castor.CastorMarshaller" scope="step">
+		<property name="mappingLocation"
+				value="file:#{ jobParameters['targetDir'] + jobParameters['productsMappingFile'] }"/>
+	</bean>
+	
+	<bean id="multilineRecordSepPolicy" class="profe.springbatch.products.batch.ProdTwoLinesSeparatorPolicy" />
+	
+	<bean id="jsonRecordSepPolicy" class="org.springframework.batch.item.file.separator.JsonRecordSeparatorPolicy"/>
+
+	<bean id="jsonProductsMapper"
+		class="profe.springbatch.products.batch.JSONWrapperMapper" />
+		
+	<bean id="jsonLineMapper" class="org.springframework.batch.item.file.mapping.JsonLineMapper" />
+		
+	<bean class="org.springframework.batch.item.file.mapping.DefaultLineMapper" id="defLineMapper">
+		<property name="lineTokenizer" ref="delimitedLineProductsTokenizer" />
+		<property name="fieldSetMapper">
+			<bean class="profe.springbatch.products.batch.ProductFieldSetMapper" />
+		</property>
+	</bean>
+
+	<bean id="fixedLengthProductsTokenizer"
+			class="org.springframework.batch.item.file.transform.FixedLengthTokenizer">
+		<property name="columns" value="1-9,10-35,36-50,51-56" />
+		<property name="names" value="id_producto,name,desc,pvp" />
+	</bean>
+			
+	<bean id="delimitedLineProductsTokenizer"
+			class="org.springframework.batch.item.file.transform.DelimitedLineTokenizer">
+		<property name="delimiter" value="," />
+		<property name="names" value="id_producto,name,desc,pvp" />
+	</bean>
+
+
+	<bean id="productsConsoleWriter"
+		class="profe.springbatch.products.batch.ProductConsoleItemWriter"
+		scope="step" />
+
+	<bean id="productsJdbcWriter" class="profe.springbatch.products.batch.ProductJdbcItemWriter"
+		scope="step">
+		<constructor-arg ref="dataSource" />
+	</bean>
+
+</beans>
